@@ -20,6 +20,9 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     Render the scene. 
     
     Background tensor (bg_color) must be on GPU!
+    args:
+    viewpoint_camera: randomly sampled camera (contains camera params and gt image)
+    pc: GaussianModel (contains point clouds, opacities, scale, etc.)
     """
  
     # Create zero tensor. We will use it to make pytorch return gradients of the 2D (screen-space) means
@@ -82,6 +85,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         colors_precomp = override_color
 
     # Rasterize visible Gaussians to image, obtain their radii (on screen). 
+    #NOTE: this is the forward pass of gaussian splat
     rendered_image, radii = rasterizer(
         means3D = means3D,
         means2D = means2D,

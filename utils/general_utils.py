@@ -51,11 +51,12 @@ def get_expon_lr_func(
         if lr_delay_steps > 0:
             # A kind of reverse cosine decay.
             delay_rate = lr_delay_mult + (1 - lr_delay_mult) * np.sin(
-                0.5 * np.pi * np.clip(step / lr_delay_steps, 0, 1)
+                0.5 * np.pi * np.clip(step / lr_delay_steps, 0, 1) #if lr_delay_steps i very close to 0, then delay_rate = 1
             )
         else:
             delay_rate = 1.0
         t = np.clip(step / max_steps, 0, 1)
+        #some sort of decaying, decreasing from lr_init to lr_final
         log_lerp = np.exp(np.log(lr_init) * (1 - t) + np.log(lr_final) * t)
         return delay_rate * log_lerp
 
@@ -110,22 +111,22 @@ def build_scaling_rotation(s, r):
     return L
 
 def safe_state(silent):
-    old_f = sys.stdout
-    class F:
-        def __init__(self, silent):
-            self.silent = silent
+    #old_f = sys.stdout
+    #class F:
+    #    def __init__(self, silent):
+    #        self.silent = silent
 
-        def write(self, x):
-            if not self.silent:
-                if x.endswith("\n"):
-                    old_f.write(x.replace("\n", " [{}]\n".format(str(datetime.now().strftime("%d/%m %H:%M:%S")))))
-                else:
-                    old_f.write(x)
+    #    def write(self, x):
+    #        if not self.silent:
+    #            if x.endswith("\n"):
+    #                old_f.write(x.replace("\n", " [{}]\n".format(str(datetime.now().strftime("%d/%m %H:%M:%S")))))
+    #            else:
+    #                old_f.write(x)
 
-        def flush(self):
-            old_f.flush()
+    #    def flush(self):
+    #        old_f.flush()
 
-    sys.stdout = F(silent)
+    #sys.stdout = F(silent)
 
     random.seed(0)
     np.random.seed(0)

@@ -13,6 +13,8 @@ import os
 import sys
 from PIL import Image
 from typing import NamedTuple
+import matplotlib.pyplot as plt
+import torchvision.transforms.functional as TF
 from scene.colmap_loader import read_extrinsics_text, read_intrinsics_text, qvec2rotmat, \
     read_extrinsics_binary, read_intrinsics_binary, read_points3D_binary, read_points3D_text
 from utils.graphics_utils import getWorld2View2, focal2fov, fov2focal
@@ -42,7 +44,35 @@ class SceneInfo(NamedTuple):
     nerf_normalization: dict
     ply_path: str
 
+def visualize_images(list_of_scene_infos, index):
+    '''
+    From a list of scene infos, save the index-th camera's image into current working directory
+    '''
+    image = TF.to_tensor(list_of_scene_infos[index].image) #(channels, h, w)
+    if image.shape[0] == 4:
+        image = image[:3]
+        image = image.permute(1,2,0)
+        plt.imshow(image)
+        plt.savefig(f"image{index}.png")
+    elif image.shape[0] == 3:
+        image = image.permute(1,2,0)
+        plt.imshow(image)
+        plt.savefig(f"image{index}.png")
+    else:
+        raise NotImplementedError
+
+
+
 def getNerfppNorm(cam_info):
+    '''
+    Performing the space normalization from NeRF ++
+    Logic:
+    1) Extracting the camera positions in world space (cam_centers) of all cameras
+    2) Find a center based on the average across all cameras in world space 
+    3) Calculate the distance between that center and all cameras.
+    4) PIck the max and select that as the radius
+    5) Return the negative center 
+    '''
     def get_center_and_diag(cam_centers):
         cam_centers = np.hstack(cam_centers)
         avg_cam_center = np.mean(cam_centers, axis=1, keepdims=True)
@@ -60,7 +90,9 @@ def getNerfppNorm(cam_info):
 
     center, diagonal = get_center_and_diag(cam_centers)
     radius = diagonal * 1.1
-
+    
+    
+    #NOTE: here this means that if you subtract every camera position, all of them will be centered at the origin
     translate = -center
 
     return {"translate": translate, "radius": radius}
@@ -177,6 +209,8 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
     return scene_info
 
 def readCamerasFromTransforms(path, transformsfile, white_background, extension=".png"):
+    '''
+    '''
     cam_infos = []
 
     with open(os.path.join(path, transformsfile)) as json_file:
@@ -189,11 +223,13 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
 
             # NeRF 'transform_matrix' is a camera-to-world transform
             c2w = np.array(frame["transform_matrix"])
+
             # change from OpenGL/Blender camera axes (Y up, Z back) to COLMAP (Y down, Z forward)
             c2w[:3, 1:3] *= -1
 
             # get the world-to-camera transform and set R, T
             w2c = np.linalg.inv(c2w)
+            #NOTE: the inverse of the rotation matrix equals its transpose, meaning this could have been extracted from c2w
             R = np.transpose(w2c[:3,:3])  # R is stored transposed due to 'glm' in CUDA code
             T = w2c[:3, 3]
 
@@ -208,7 +244,8 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
             norm_data = im_data / 255.0
             arr = norm_data[:,:,:3] * norm_data[:, :, 3:4] + bg * (1 - norm_data[:, :, 3:4])
             image = Image.fromarray(np.array(arr*255.0, dtype=np.byte), "RGB")
-
+            
+            #NOTE: fovy depends on the aspect ratio of the image
             fovy = focal2fov(fov2focal(fovx, image.size[0]), image.size[1])
             FovY = fovy 
             FovX = fovx
@@ -219,17 +256,24 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
     return cam_infos
 
 def readNerfSyntheticInfo(path, white_background, eval, extension=".png"):
+    '''
+    Takes in the dataset path and loads the camera poses into a list of CameraInfo objects, each has Rotation, Translation,
+    and images, etc.
+    '''
     print("Reading Training Transforms")
     train_cam_infos = readCamerasFromTransforms(path, "transforms_train.json", white_background, extension)
+    visualize_images(train_cam_infos, 3)
     print("Reading Test Transforms")
     test_cam_infos = readCamerasFromTransforms(path, "transforms_test.json", white_background, extension)
     
     if not eval:
+        #NOTE: if not doing eval then we combine the training views with the testing views
         train_cam_infos.extend(test_cam_infos)
         test_cam_infos = []
 
     nerf_normalization = getNerfppNorm(train_cam_infos)
 
+    #If we have point clouds, we load them, otherwise randomly initialize them with zero normals
     ply_path = os.path.join(path, "points3d.ply")
     if not os.path.exists(ply_path):
         # Since this data set has no colmap data, we start with random points

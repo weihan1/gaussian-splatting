@@ -22,11 +22,27 @@ from tqdm import tqdm
 from utils.image_utils import psnr
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
+#TODO: Need to download tensorboard here
 try:
     from torch.utils.tensorboard import SummaryWriter
     TENSORBOARD_FOUND = True
+    print("Tensorboard installation is found")
 except ImportError:
     TENSORBOARD_FOUND = False
+
+def inspect_parser(parser, title="Parser Contents"):
+    print(f"\n{title}")
+    print("=" * len(title))
+    
+    print("\nArgument Groups:")
+    for group in parser._action_groups:
+        print(f"  Group: {group.title}")
+        for action in group._group_actions:
+            print(f"    - {action.dest}: {action.default}")
+    
+    print("\nAll Arguments:")
+    for option, action in parser._option_string_actions.items():
+        print(f"  {option}: {action.default}")
 
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
     first_iter = 0
@@ -66,6 +82,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         iter_start.record()
 
+        #NOTE: only updates the learning rate of the positions
         gaussians.update_learning_rate(iteration)
 
         # Every 1000 its we increase the levels of SH up to a maximum degree
@@ -74,7 +91,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         # Pick a random Camera
         if not viewpoint_stack:
+            #Sample all the cameras - they are also shuffled
+            #this returns a camera object, where you can access camera params and images
             viewpoint_stack = scene.getTrainCameras().copy()
+
         viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack)-1))
 
         # Render
@@ -83,6 +103,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         bg = torch.rand((3), device="cuda") if opt.random_background else background
 
+        
+        #NOTE: the render function here is the hard part
         render_pkg = render(viewpoint_cam, gaussians, pipe, bg)
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
@@ -193,9 +215,11 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
 if __name__ == "__main__":
     # Set up command line argument parser
     parser = ArgumentParser(description="Training script parameters")
+    #Basically creates command line arguments for each of these groups below
     lp = ModelParams(parser)
     op = OptimizationParams(parser)
     pp = PipelineParams(parser)
+    #Below are arguments that are in the optional arguments section
     parser.add_argument('--ip', type=str, default="127.0.0.1")
     parser.add_argument('--port', type=int, default=6009)
     parser.add_argument('--debug_from', type=int, default=-1)

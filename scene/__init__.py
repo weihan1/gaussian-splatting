@@ -23,8 +23,10 @@ class Scene:
     gaussians : GaussianModel
 
     def __init__(self, args : ModelParams, gaussians : GaussianModel, load_iteration=None, shuffle=True, resolution_scales=[1.0]):
-        """b
-        :param path: Path to colmap scene main folder.
+        """
+        Arguments:
+        args: ModelParams object.
+        gaussians: Initialized gaussianmodel
         """
         self.model_path = args.model_path
         self.loaded_iter = None
@@ -40,8 +42,12 @@ class Scene:
         self.train_cameras = {}
         self.test_cameras = {}
 
+        #If the dataset source path contains sparse, then it comes from COLMAP
         if os.path.exists(os.path.join(args.source_path, "sparse")):
             scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval)
+
+        #Else, comes from blender
+        #return a scene_info object, tuple, includes point clouds, training poses, nerf++ normalization scheme and pc path
         elif os.path.exists(os.path.join(args.source_path, "transforms_train.json")):
             print("Found transforms_train.json file, assuming Blender data set!")
             scene_info = sceneLoadTypeCallbacks["Blender"](args.source_path, args.white_background, args.eval)
@@ -49,6 +55,7 @@ class Scene:
             assert False, "Could not recognize scene type!"
 
         if not self.loaded_iter:
+            #Just dump the camera params into a json file
             with open(scene_info.ply_path, 'rb') as src_file, open(os.path.join(self.model_path, "input.ply") , 'wb') as dest_file:
                 dest_file.write(src_file.read())
             json_cams = []
@@ -69,6 +76,7 @@ class Scene:
         self.cameras_extent = scene_info.nerf_normalization["radius"]
 
         for resolution_scale in resolution_scales:
+            #this part is for downsampling images
             print("Loading Training Cameras")
             self.train_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.train_cameras, resolution_scale, args)
             print("Loading Test Cameras")

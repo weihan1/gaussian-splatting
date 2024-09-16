@@ -17,16 +17,23 @@ class GroupParams:
     pass
 
 class ParamGroup:
+    '''
+    Logic: whenever each of the ModelParams, PipelineParams, and OptimizationParams are initialized,
+    1.Create a new group for each of these classes (based on name).
+    2.Then for each of their attributes, add them to the group.
+    3. If the attribute starts with _, then add the both the shortform and the longform to the group parser. 
+    '''
     def __init__(self, parser: ArgumentParser, name : str, fill_none = False):
-        group = parser.add_argument_group(name)
-        for key, value in vars(self).items():
+        group = parser.add_argument_group(name) #creates a new argument parser based on name
+        for key, value in vars(self).items(): #vars(self) returns a dictionary of key, value from the attributes of the object
             shorthand = False
-            if key.startswith("_"):
+            if key.startswith("_"): #if the attribute of object starts with _, remove that in the parser              
                 shorthand = True
                 key = key[1:]
             t = type(value)
             value = value if not fill_none else None 
             if shorthand:
+                #This creates both a shortform and longform arguments
                 if t == bool:
                     group.add_argument("--" + key, ("-" + key[0:1]), default=value, action="store_true")
                 else:
@@ -38,6 +45,9 @@ class ParamGroup:
                     group.add_argument("--" + key, default=value, type=t)
 
     def extract(self, args):
+        '''
+        Initialize an empty group params and populate it with the attributes of the class you're extracting from.
+        '''
         group = GroupParams()
         for arg in vars(args).items():
             if arg[0] in vars(self) or ("_" + arg[0]) in vars(self):
