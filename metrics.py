@@ -20,6 +20,7 @@ import json
 from tqdm import tqdm
 from utils.image_utils import psnr
 from argparse import ArgumentParser
+import sys
 
 def readImages(renders_dir, gt_dir):
     renders = []
@@ -34,7 +35,9 @@ def readImages(renders_dir, gt_dir):
     return renders, gts, image_names
 
 def evaluate(model_paths):
-
+    '''
+    Assumes that you have ran evaluate with test folders
+    '''
     full_dict = {}
     per_view_dict = {}
     full_dict_polytopeonly = {}
@@ -63,7 +66,9 @@ def evaluate(model_paths):
                 gt_dir = method_dir/ "gt"
                 renders_dir = method_dir / "renders"
                 renders, gts, image_names = readImages(renders_dir, gt_dir)
-
+                if len(renders) == 0 or len(gts) == 0:
+                    print(f"No images loaded for this {scene_dir}. Please ensure that you run evaluate.py with test option. Exiting now... ")
+                    sys.exit(1) 
                 ssims = []
                 psnrs = []
                 lpipss = []

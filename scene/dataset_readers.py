@@ -44,20 +44,21 @@ class SceneInfo(NamedTuple):
     nerf_normalization: dict
     ply_path: str
 
-def visualize_images(list_of_scene_infos, index):
+def visualize_images(list_of_scene_infos, split, index):
     '''
     From a list of scene infos, save the index-th camera's image into current working directory
+    with the split name
     '''
     image = TF.to_tensor(list_of_scene_infos[index].image) #(channels, h, w)
     if image.shape[0] == 4:
         image = image[:3]
         image = image.permute(1,2,0)
         plt.imshow(image)
-        plt.savefig(f"image{index}.png")
+        plt.savefig(f"image_{split}{index}.png")
     elif image.shape[0] == 3:
         image = image.permute(1,2,0)
         plt.imshow(image)
-        plt.savefig(f"image{index}.png")
+        plt.savefig(f"image_{split}{index}.png")
     else:
         raise NotImplementedError
 
@@ -236,11 +237,15 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
             image_path = os.path.join(path, cam_name)
             image_name = Path(cam_name).stem
             image = Image.open(image_path)
-
-            im_data = np.array(image.convert("RGBA"))
-
+            
+            # NOTE: Be careful here, if the background is transparent the last channel it will load will all be 0 (transparent)          
+            # If the image has a black background, the last channel will be all 255, so opacity won't be applied correctly
+            im_data = np.array(image.convert("RGBA")) #range between [0, 255]
             bg = np.array([1,1,1]) if white_background else np.array([0, 0, 0])
 
+            if (im_data[...,3:4] == 255).all():
+                print("BE CAREFUL! BLACK BACKGROUND DETECTED. EXITING NOW..")
+                exit(1)
             norm_data = im_data / 255.0
             arr = norm_data[:,:,:3] * norm_data[:, :, 3:4] + bg * (1 - norm_data[:, :, 3:4])
             image = Image.fromarray(np.array(arr*255.0, dtype=np.byte), "RGB")
@@ -259,12 +264,15 @@ def readNerfSyntheticInfo(path, white_background, eval, extension=".png"):
     '''
     Takes in the dataset path and loads the camera poses into a list of CameraInfo objects, each has Rotation, Translation,
     and images, etc.
+    
+    If initial point clouds are not found, randomly initialize them and store them.
     '''
     print("Reading Training Transforms")
     train_cam_infos = readCamerasFromTransforms(path, "transforms_train.json", white_background, extension)
-    visualize_images(train_cam_infos, 3)
+    visualize_images(train_cam_infos, "train", 3) #visualizing  with specific index
     print("Reading Test Transforms")
     test_cam_infos = readCamerasFromTransforms(path, "transforms_test.json", white_background, extension)
+    visualize_images(test_cam_infos, "test", 3)
     
     if not eval:
         #NOTE: if not doing eval then we combine the training views with the testing views
@@ -290,6 +298,7 @@ def readNerfSyntheticInfo(path, white_background, eval, extension=".png"):
         pcd = fetchPly(ply_path)
     except:
         pcd = None
+        print("point clouds are initialized to none")
 
     scene_info = SceneInfo(point_cloud=pcd,
                            train_cameras=train_cam_infos,

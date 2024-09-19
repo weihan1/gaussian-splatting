@@ -12,6 +12,7 @@
 from argparse import ArgumentParser, Namespace
 import sys
 import os
+from datetime import datetime
 
 class GroupParams:
     pass
@@ -56,6 +57,9 @@ class ParamGroup:
 
 class ModelParams(ParamGroup): 
     def __init__(self, parser, sentinel=False):
+        '''
+        NOTE: here for model path, it will basically 
+        '''
         self.sh_degree = 3
         self._source_path = ""
         self._model_path = ""
@@ -80,7 +84,7 @@ class PipelineParams(ParamGroup):
 
 class OptimizationParams(ParamGroup):
     def __init__(self, parser):
-        self.iterations = 30_000
+        self.iterations = 100_000
         self.position_lr_init = 0.00016
         self.position_lr_final = 0.0000016
         self.position_lr_delay_mult = 0.01

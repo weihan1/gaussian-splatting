@@ -22,13 +22,14 @@ from tqdm import tqdm
 from utils.image_utils import psnr
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
-#TODO: Need to download tensorboard here
+from datetime import datetime
 try:
     from torch.utils.tensorboard import SummaryWriter
     TENSORBOARD_FOUND = True
     print("Tensorboard installation is found")
 except ImportError:
     TENSORBOARD_FOUND = False
+from datetime import datetime
 
 def inspect_parser(parser, title="Parser Contents"):
     print(f"\n{title}")
@@ -65,20 +66,20 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
     for iteration in range(first_iter, opt.iterations + 1):        
-        if network_gui.conn == None:
-            network_gui.try_connect()
-        while network_gui.conn != None:
-            try:
-                net_image_bytes = None
-                custom_cam, do_training, pipe.convert_SHs_python, pipe.compute_cov3D_python, keep_alive, scaling_modifer = network_gui.receive()
-                if custom_cam != None:
-                    net_image = render(custom_cam, gaussians, pipe, background, scaling_modifer)["render"]
-                    net_image_bytes = memoryview((torch.clamp(net_image, min=0, max=1.0) * 255).byte().permute(1, 2, 0).contiguous().cpu().numpy())
-                network_gui.send(net_image_bytes, dataset.source_path)
-                if do_training and ((iteration < int(opt.iterations)) or not keep_alive):
-                    break
-            except Exception as e:
-                network_gui.conn = None
+        #if network_gui.conn == None:
+        #    network_gui.try_connect()
+        #while network_gui.conn != None:
+        #    try:
+        #        net_image_bytes = None
+        #        custom_cam, do_training, pipe.convert_SHs_python, pipe.compute_cov3D_python, keep_alive, scaling_modifer = network_gui.receive()
+        #        if custom_cam != None:
+        #            net_image = render(custom_cam, gaussians, pipe, background, scaling_modifer)["render"]
+        #            net_image_bytes = memoryview((torch.clamp(net_image, min=0, max=1.0) * 255).byte().permute(1, 2, 0).contiguous().cpu().numpy())
+        #        network_gui.send(net_image_bytes, dataset.source_path)
+        #        if do_training and ((iteration < int(opt.iterations)) or not keep_alive):
+        #            break
+        #    except Exception as e:
+        #        network_gui.conn = None
 
         iter_start.record()
 
@@ -115,10 +116,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         loss.backward()
 
         iter_end.record()
+        
+        #NOTE: to get the time between start and end, you can use iter_start.elapsed_time(iter_end), which measures in the milliseconds
 
         with torch.no_grad():
             # Progress bar
-            ema_loss_for_log = 0.4 * loss.item() + 0.6 * ema_loss_for_log
+            ema_loss_for_log = 0.4 * loss.item() + 0.6 * ema_loss_for_log #only used for plotting
             if iteration % 10 == 0:
                 progress_bar.set_postfix({"Loss": f"{ema_loss_for_log:.{7}f}"})
                 progress_bar.update(10)
@@ -155,12 +158,15 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
 def prepare_output_and_logger(args):    
     if not args.model_path:
-        if os.getenv('OAR_JOB_ID'):
-            unique_str=os.getenv('OAR_JOB_ID')
-        else:
-            unique_str = str(uuid.uuid4())
-        args.model_path = os.path.join("./output/", unique_str[0:10])
-        
+        #if os.getenv('OAR_JOB_ID'):
+        #    unique_str=os.getenv('OAR_JOB_ID')
+        #else:
+        #    unique_str = str(uuid.uuid4())
+        #NOTE:Assuming args.source_path is defined here
+        scene = args.source_path.split("/")[-1]
+        unique_str = datetime.now().strftime('@%Y%m%d-%H%M%S')
+        args.model_path = os.path.join("./output/", scene+unique_str)
+       
     # Set up output folder
     print("Output folder: {}".format(args.model_path))
     os.makedirs(args.model_path, exist_ok = True)
@@ -175,7 +181,21 @@ def prepare_output_and_logger(args):
         print("Tensorboard not available: not logging progress")
     return tb_writer
 
+
+
 def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, scene : Scene, renderFunc, renderArgs):
+    '''
+    Write stuff onto tensorboard.
+    Args:
+    tb_writer: tensorboard summary writer object
+    iteration: current iteration number
+    Ll1: the l1 loss between predicted and gt
+    loss: the full loss (including the ssim loss)
+    elapsed: the elapsed time in the render and backprop step in milliseconds 
+    testing_iterations: a list of iterations for which we compute psnr
+    renderFunc: the rasterization function
+    renderArgs: some additional rendering arguments
+    '''
     if tb_writer:
         tb_writer.add_scalar('train_loss_patches/l1_loss', Ll1.item(), iteration)
         tb_writer.add_scalar('train_loss_patches/total_loss', loss.item(), iteration)
@@ -224,12 +244,15 @@ if __name__ == "__main__":
     parser.add_argument('--port', type=int, default=6009)
     parser.add_argument('--debug_from', type=int, default=-1)
     parser.add_argument('--detect_anomaly', action='store_true', default=False)
-    parser.add_argument("--test_iterations", nargs="+", type=int, default=[7_000, 30_000])
-    parser.add_argument("--save_iterations", nargs="+", type=int, default=[7_000, 30_000])
+    parser.add_argument("--test_iterations", nargs="+", type=int, default=[7_000,15_000, 30_000, 60_000, 100_000])
+    parser.add_argument("--save_iterations", nargs="+", type=int, default=[7_000, 30_000,60_000, 100_000])
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default = None)
+    parser.add_argument("--exp_name", type=str)
     args = parser.parse_args(sys.argv[1:])
+    
+    #HERE you can pass --iterations to specify the number of iterations for training
     args.save_iterations.append(args.iterations)
     
     print("Optimizing " + args.model_path)
