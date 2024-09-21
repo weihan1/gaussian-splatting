@@ -22,7 +22,7 @@ class Scene:
 
     gaussians : GaussianModel
 
-    def __init__(self, args : ModelParams, gaussians : GaussianModel, load_iteration=None, shuffle=True, resolution_scales=[1.0]):
+    def __init__(self, args : ModelParams, gaussians : GaussianModel, load_iteration=None, shuffle=True, resolution_scales=[1.0], render_movie=False):
         """
         Arguments:
         args: ModelParams object.
@@ -42,17 +42,25 @@ class Scene:
         self.train_cameras = {}
         self.test_cameras = {}
 
-        #If the dataset source path contains sparse, then it comes from COLMAP
-        if os.path.exists(os.path.join(args.source_path, "sparse")):
-            scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval)
 
         #Else, comes from blender
         #return a scene_info object, tuple, includes point clouds, training poses, nerf++ normalization scheme and pc path
-        elif os.path.exists(os.path.join(args.source_path, "transforms_train.json")):
-            print("Found transforms_train.json file, assuming Blender data set!")
-            scene_info = sceneLoadTypeCallbacks["Blender"](args.source_path, args.white_background, args.eval)
+        if not render_movie:
+            if os.path.exists(os.path.join(args.source_path, "transforms_train.json")):
+                print("Found transforms_train.json file, assuming Blender data set!")
+                scene_info = sceneLoadTypeCallbacks["Blender"](args.source_path, args.white_background, args.eval)
+            #If the dataset source path contains sparse, then it comes from COLMAP
+            elif os.path.exists(os.path.join(args.source_path, "sparse")):
+                scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval)
+
+            else:
+                assert False, "Could not recognize scene type!"
+
         else:
-            assert False, "Could not recognize scene type!"
+            if os.path.exists(os.path.join(args.source_path, "transforms_movie_combined.json")):
+                scene_info = sceneLoadTypeCallbacks["Blender_movie"](args.source_path, args.white_background, args.eval)
+            else:
+                assert False, "Could not find movie pose file"
 
         if not self.loaded_iter:
             #Just dump the camera params into a json file
