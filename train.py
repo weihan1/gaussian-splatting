@@ -106,6 +106,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         
         #NOTE: the render function here is the hard part
+        #each of viewspace_point_tensor, visibility_filter and radii are of shape (100000,-1), per pc attribute
+        # the viewspace_point_tensor is just the 
         render_pkg = render(viewpoint_cam, gaussians, pipe, bg)
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
@@ -131,14 +133,17 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             # Log and save
             training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background))
             if (iteration in saving_iterations):
+                #NOTE: this part saves the point clouds
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration)
 
-            # Densification
+            # Apply densification until we reach opt.densify_until_iter
+            # From 0-600, we update the radii of the gaussians in view space. Starting at 600, every 100 steps, we densify and prune until 15000
             if iteration < opt.densify_until_iter:
                 # Keep track of max radii in image-space for pruning
+                #NOTE: this sets all gaussians which have a positive radius to the maximum of its current radius and the radius from the rasterization 
                 gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
-                gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
+                gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter) #this part just accumulates gradient norms
 
                 if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
                     size_threshold = 20 if iteration > opt.opacity_reset_interval else None
@@ -153,6 +158,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 gaussians.optimizer.zero_grad(set_to_none = True)
 
             if (iteration in checkpoint_iterations):
+                #NOTE: this part saves the model checkpoint
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
 
@@ -241,13 +247,13 @@ if __name__ == "__main__":
     pp = PipelineParams(parser)
     #Below are arguments that are in the optional arguments section
     parser.add_argument('--ip', type=str, default="127.0.0.1")
-    parser.add_argument('--port', type=int, default=6009)
+    parser.add_argument('--port', type=int, default=6010)
     parser.add_argument('--debug_from', type=int, default=-1)
     parser.add_argument('--detect_anomaly', action='store_true', default=False)
-    parser.add_argument("--test_iterations", nargs="+", type=int, default=[7_000,15_000, 30_000, 60_000, 100_000])
-    parser.add_argument("--save_iterations", nargs="+", type=int, default=[7_000, 30_000,60_000, 100_000])
+    parser.add_argument("--test_iterations", nargs="+", type=int, default=[7_000,15_000, 30_000, 60_000, 100_000, 150_000, 200_000])
+    parser.add_argument("--save_iterations", nargs="+", type=int, default=[100_000, 150_000, 200_000])
     parser.add_argument("--quiet", action="store_true")
-    parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
+    parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[100_000, 200_000])
     parser.add_argument("--start_checkpoint", type=str, default = None)
     parser.add_argument("--exp_name", type=str)
     args = parser.parse_args(sys.argv[1:])
@@ -261,7 +267,7 @@ if __name__ == "__main__":
     safe_state(args.quiet)
 
     # Start GUI server, configure and run training
-    network_gui.init(args.ip, args.port)
+    #network_gui.init(args.ip, args.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
     training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from)
 

@@ -84,6 +84,9 @@ class PipelineParams(ParamGroup):
 
 class OptimizationParams(ParamGroup):
     def __init__(self, parser):
+        '''
+        For more complex scenes, you can lower the --position_lr_init, --position_lr_final and --scaling_lr (x0.3, x0.1, ...)
+        '''
         self.iterations = 100_000
         self.position_lr_init = 0.00016
         self.position_lr_final = 0.0000016
@@ -95,15 +98,15 @@ class OptimizationParams(ParamGroup):
         self.rotation_lr = 0.001
         self.percent_dense = 0.01
         self.lambda_dssim = 0.2
-        self.densification_interval = 100
+        self.densification_interval = 100 #NOTE: this is the densification interval
         self.opacity_reset_interval = 3000
         self.densify_from_iter = 500
         self.densify_until_iter = 15_000
-        self.densify_grad_threshold = 0.0002
+        self.densify_grad_threshold = 0.0002 #NOTE: this is the view-space position threshold 
         self.random_background = False
         super().__init__(parser, "Optimization Parameters")
 
-def get_combined_args(parser : ArgumentParser):
+def get_combined_args(parser : ArgumentParser): 
     cmdlne_string = sys.argv[1:]
     cfgfile_string = "Namespace()"
     args_cmdline = parser.parse_args(cmdlne_string)
