@@ -12,10 +12,6 @@
 from pathlib import Path
 import os
 from PIL import Image
-import torch
-import torchvision.transforms.functional as tf
-from utils.loss_utils import ssim
-from lpipsPyTorch import lpips
 import json
 from tqdm import tqdm
 from utils.image_utils import psnr
@@ -34,9 +30,10 @@ def readImages(renders_dir, gt_dir):
         image_names.append(fname)
     return renders, gts, image_names
 
-def evaluate(model_paths):
+def evaluate(model_paths, split):
     '''
-    Assumes that you have ran evaluate with test folders
+    The per_view.json matches the order that you load your images in readImages
+    #TODO: Addapt this code to allow the user to also choose computing metrics for training images, not just for test.
     '''
     full_dict = {}
     per_view_dict = {}
@@ -52,7 +49,7 @@ def evaluate(model_paths):
             full_dict_polytopeonly[scene_dir] = {}
             per_view_dict_polytopeonly[scene_dir] = {}
 
-            test_dir = Path(scene_dir) / "test"
+            test_dir = Path(scene_dir) / split
 
             for method in os.listdir(test_dir):
                 print("Method:", method)
@@ -67,7 +64,7 @@ def evaluate(model_paths):
                 renders_dir = method_dir / "renders"
                 renders, gts, image_names = readImages(renders_dir, gt_dir)
                 if len(renders) == 0 or len(gts) == 0:
-                    print(f"No images loaded for this {scene_dir}. Please ensure that you run evaluate.py with test option. Exiting now... ")
+                    print(f"No images loaded for this {scene_dir}. Please ensure that you run --eval during training option. Exiting now... ")
                     sys.exit(1) 
                 ssims = []
                 psnrs = []
@@ -89,20 +86,28 @@ def evaluate(model_paths):
                 per_view_dict[scene_dir][method].update({"SSIM": {name: ssim for ssim, name in zip(torch.tensor(ssims).tolist(), image_names)},
                                                             "PSNR": {name: psnr for psnr, name in zip(torch.tensor(psnrs).tolist(), image_names)},
                                                             "LPIPS": {name: lp for lp, name in zip(torch.tensor(lpipss).tolist(), image_names)}})
-
-            with open(scene_dir + "/results.json", 'w') as fp:
+                print("finished method ")
+            with open(scene_dir + f"/results_{split}.json", 'w') as fp:
                 json.dump(full_dict[scene_dir], fp, indent=True)
-            with open(scene_dir + "/per_view.json", 'w') as fp:
+            with open(scene_dir + f"/per_view_{split}.json", 'w') as fp:
                 json.dump(per_view_dict[scene_dir], fp, indent=True)
         except:
             print("Unable to compute metrics for model", scene_dir)
 
 if __name__ == "__main__":
-    device = torch.device("cuda:0")
-    torch.cuda.set_device(device)
 
     # Set up command line argument parser
     parser = ArgumentParser(description="Training script parameters")
     parser.add_argument('--model_paths', '-m', required=True, nargs="+", type=str, default=[])
+    parser.add_argument("--gpu", type=int, default=1)
+    parser.add_argument("--split", type=str, choices=["train", "test"])
     args = parser.parse_args()
-    evaluate(args.model_paths)
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
+    print(f"using gpu {args.gpu}")
+    import torch
+    import torchvision.transforms.functional as tf
+    from utils.loss_utils import ssim
+    from lpipsPyTorch import lpips
+     
+    evaluate(args.model_paths, args.split)
+    
