@@ -10,7 +10,6 @@
 #
 
 import os
-import torch
 from random import randint
 from utils.loss_utils import l1_loss, ssim
 from gaussian_renderer import render, network_gui
@@ -22,13 +21,6 @@ from tqdm import tqdm
 from utils.image_utils import psnr
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
-from datetime import datetime
-try:
-    from torch.utils.tensorboard import SummaryWriter
-    TENSORBOARD_FOUND = True
-    print("Tensorboard installation is found")
-except ImportError:
-    TENSORBOARD_FOUND = False
 from datetime import datetime
 
 def inspect_parser(parser, title="Parser Contents"):
@@ -239,8 +231,9 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
         torch.cuda.empty_cache()
 
 if __name__ == "__main__":
-    # Set up command line argument parser
     parser = ArgumentParser(description="Training script parameters")
+    parser.add_argument("--gpu", type=int, default=0)
+    # Set up command line argument parser
     #Basically creates command line arguments for each of these groups below
     lp = ModelParams(parser)
     op = OptimizationParams(parser)
@@ -257,12 +250,20 @@ if __name__ == "__main__":
     parser.add_argument("--start_checkpoint", type=str, default = None)
     parser.add_argument("--exp_name", type=str)
     args = parser.parse_args(sys.argv[1:])
-    
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
+    print(f"using gpu {args.gpu}")
     #HERE you can pass --iterations to specify the number of iterations for training
     args.save_iterations.append(args.iterations)
     
     print("Optimizing " + args.model_path)
 
+    import torch
+    try:
+        from torch.utils.tensorboard import SummaryWriter
+        TENSORBOARD_FOUND = True
+        print("Tensorboard installation is found")
+    except ImportError:
+        TENSORBOARD_FOUND = False
     # Initialize system state (RNG)
     safe_state(args.quiet)
 
