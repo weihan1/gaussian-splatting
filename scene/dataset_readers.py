@@ -346,8 +346,7 @@ def readNerfSyntheticInfoMovie(path, white_background, eval, extension=".png"):
     '''
     Load only the cameras from NeRF to render a movie. 
     '''
-
-    print("Reading Training Transforms")
+    print("Reading transforms movie")
     movie_cam_infos = readCameraMovie(path, "transforms_movie_combined.json", white_background, extension)
     
     nerf_normalization = getNerfppNorm(movie_cam_infos)

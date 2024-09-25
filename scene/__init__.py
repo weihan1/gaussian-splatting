@@ -58,6 +58,7 @@ class Scene:
 
         else:
             if os.path.exists(os.path.join(args.source_path, "transforms_movie_combined.json")):
+                print("rendering movie")
                 scene_info = sceneLoadTypeCallbacks["Blender_movie"](args.source_path, args.white_background, args.eval)
             else:
                 assert False, "Could not find movie pose file"

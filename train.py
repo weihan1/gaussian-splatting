@@ -163,7 +163,7 @@ def prepare_output_and_logger(args):
         #NOTE:Assuming args.source_path is defined here
         scene = args.source_path.split("/")[-1]
         unique_str = datetime.now().strftime('@%Y%m%d-%H%M%S')
-        args.model_path = os.path.join("./output/", scene+unique_str)
+        args.model_path = os.path.join("./output/", scene, scene+unique_str)
        
     # Set up output folder
     print("Output folder: {}".format(args.model_path))
